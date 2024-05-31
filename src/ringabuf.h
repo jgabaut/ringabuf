@@ -1,0 +1,196 @@
+// jgabaut @ github.com/jgabaut
+// SPDX-License-Identifier: GPL-3.0-only
+/*
+    Copyright (C) 2024 jgabaut
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, version 3 of the License.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+#ifndef RINGABUF_H_
+#define RINGABUF_H_
+
+#include <stdio.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <string.h>
+#include <stdlib.h>
+
+#define RINGABUF_MAJOR 0 /**< Represents current major release.*/
+#define RINGABUF_MINOR 0 /**< Represents current minor release.*/
+#define RINGABUF_PATCH 1 /**< Represents current patch release.*/
+
+/**
+ * Defines current API version number from RINGABUF_MAJOR, RINGABUF_MINOR and RINGABUF_PATCH.
+ */
+static const int RINGABUF_API_VERSION_INT =
+    (RINGABUF_MAJOR * 1000000 + RINGABUF_MINOR * 10000 + RINGABUF_PATCH * 100);
+/**< Represents current version with numeric format.*/
+
+/**
+ * Defines current API version string.
+ */
+static const char RINGABUF_API_VERSION_STRING[] = "0.0.1"; /**< Represents current version with MAJOR.MINOR.PATCH format.*/
+
+/**
+ * Returns current ringabuf version as a string.
+ */
+const char *string_ringabuf_version(void);
+
+/**
+ * Returns current ringabuf version as an integer.
+ */
+int int_ringabuf_version(void);
+
+typedef struct RingaBuf {
+    char* data;
+    uint32_t head;
+    uint32_t tail;
+    size_t size;
+} RingaBuf;
+
+RingaBuf rb_new_(char* data, size_t size, int count);
+
+#define rb_new_arr(data, type, count) rb_new_((data), sizeof(type), (count))
+#define rb_new(data, type) rb_new_((data), sizeof(type), 1)
+
+bool rb_push_byte(RingaBuf *rb, char* data);
+size_t rb_push_bytes(RingaBuf *rb, char* bytes, size_t count);
+
+#define rb_push(rb, elem) rb_push_bytes((rb), (char*) &(elem), sizeof(elem))
+#define try_rb_push(rb, elem) do { \
+    size_t rb_inner_size = rb_push((rb), (elem)); \
+    if ( rb_inner_size != sizeof(elem)) { \
+        fprintf(stderr, "%s():    failed rb_push() call.\n", __func__); \
+        exit(EXIT_FAILURE); \
+    } \
+} while (0);
+
+bool rb_pop_byte(RingaBuf *rb, char* data);
+size_t rb_pop_bytes(RingaBuf *rb, char* bytes, size_t count);
+#define rb_pop(rb, elem) rb_pop_bytes((rb), (char*) &(elem), sizeof(elem))
+#define try_rb_pop(rb, elem) do { \
+    size_t rb_inner_size = rb_pop((rb), (elem)); \
+    if ( rb_inner_size != sizeof(elem)) { \
+        fprintf(stderr, "%s():    failed rb_pop() call.\n", __func__); \
+        exit(EXIT_FAILURE); \
+    } \
+} while (0);
+
+#endif // RINGABUF_H_
+
+#ifdef RINGABUF_IMPLEMENTATION
+
+/**
+ * Returns the constant string representing current version for Ringabuf.
+ * @return A constant string in MAJOR-MINOR-PATCH format for current Ringabuf version.
+ */
+const char *string_ringabuf_version(void)
+{
+    return RINGABUF_API_VERSION_STRING;
+}
+
+/**
+ * Returns the constant int representing current version for Ringabuf.
+ * @return A constant int in numeric format for current Ringabuf version.
+ */
+int int_ringabuf_version(void)
+{
+    return RINGABUF_API_VERSION_INT;
+}
+
+RingaBuf rb_new_(char* data, size_t size, int count)
+{
+    if (count <= 0) {
+        fprintf(stderr,"%s():    invalid count -> {%i}.\n", __func__, count);
+        return (RingaBuf){0};
+    }
+    return (RingaBuf){
+        .data = data,
+        .head = 0,
+        .tail = 0,
+        .size = count * size,
+    };
+}
+
+bool rb_push_byte(RingaBuf *rb, char* data)
+{
+    if (!rb) {
+        fprintf(stderr,"%s():    rb was NULL.\n", __func__);
+        return false;
+    }
+    if (!data) {
+        fprintf(stderr,"%s():    data was NULL.\n", __func__);
+        return false;
+    }
+    if ((rb->head == (rb->size - 1) && rb->tail == 0) || (rb->head == (rb->tail -1))) {
+        fprintf(stderr,"%s():    Buffer is full. NO overflow.\n", __func__);
+        return false;
+    }
+    rb->data[rb->head] = *data;
+
+    rb->head++;
+    if (rb->head == rb->size) {
+        rb->head = 0;
+    }
+    return true;
+}
+
+size_t rb_push_bytes(RingaBuf *rb, char* bytes, size_t count)
+{
+    if (!rb) {
+        fprintf(stderr,"%s():    rb was NULL.\n", __func__);
+        return false;
+    }
+
+    for (uint32_t i = 0; i < count; i++) {
+        if (! rb_push_byte(rb, &bytes[i])) {
+            return i;
+        }
+    }
+
+    return count;
+}
+
+bool rb_pop_byte(RingaBuf *rb, char* data)
+{
+    if (!rb) {
+        fprintf(stderr,"%s():    rb was NULL.\n", __func__);
+        return false;
+    }
+    if (rb->tail == rb->head) {
+        fprintf(stderr,"%s():    Buffer is empty.\n", __func__);
+        return false;
+    }
+    *data = rb->data[rb->tail];
+    rb->tail++;
+    if (rb->tail == rb->size) {
+        rb->tail = 0;
+    }
+    return true;
+}
+
+size_t rb_pop_bytes(RingaBuf *rb, char* bytes, size_t count)
+{
+    if (!rb) {
+        fprintf(stderr,"%s():    rb was NULL.\n", __func__);
+        return false;
+    }
+
+    for (uint32_t i = 0; i < count; i++) {
+        if (! rb_pop_byte(rb, bytes +i)) {
+            return i;
+        }
+    }
+
+    return count;
+}
+#endif // RINGABUF_IMPLEMENTATION
