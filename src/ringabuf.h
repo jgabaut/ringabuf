@@ -54,7 +54,8 @@ typedef struct RingaBuf {
     char* data;
     uint32_t head;
     uint32_t tail;
-    size_t size;
+    size_t capacity;
+    bool is_full;
 } RingaBuf;
 
 RingaBuf rb_new_(char* data, size_t size, int count);
@@ -89,24 +90,6 @@ size_t rb_pop_bytes(RingaBuf *rb, char* bytes, size_t count);
 
 #ifdef RINGABUF_IMPLEMENTATION
 
-/**
- * Returns the constant string representing current version for Ringabuf.
- * @return A constant string in MAJOR-MINOR-PATCH format for current Ringabuf version.
- */
-const char *string_ringabuf_version(void)
-{
-    return RINGABUF_API_VERSION_STRING;
-}
-
-/**
- * Returns the constant int representing current version for Ringabuf.
- * @return A constant int in numeric format for current Ringabuf version.
- */
-int int_ringabuf_version(void)
-{
-    return RINGABUF_API_VERSION_INT;
-}
-
 RingaBuf rb_new_(char* data, size_t size, int count)
 {
     if (count <= 0) {
@@ -117,7 +100,8 @@ RingaBuf rb_new_(char* data, size_t size, int count)
         .data = data,
         .head = 0,
         .tail = 0,
-        .size = count * size,
+        .capacity = count * size,
+        .is_full = false
     };
 }
 
@@ -131,16 +115,16 @@ bool rb_push_byte(RingaBuf *rb, char* data)
         fprintf(stderr,"%s():    data was NULL.\n", __func__);
         return false;
     }
-    if ((rb->head == (rb->size - 1) && rb->tail == 0) || (rb->head == (rb->tail -1))) {
-        fprintf(stderr,"%s():    Buffer is full. NO overflow.\n", __func__);
-        return false;
-    }
-    rb->data[rb->head] = *data;
 
-    rb->head++;
-    if (rb->head == rb->size) {
-        rb->head = 0;
+    rb->data[rb->head] = *data;
+    rb->head = (rb->head + 1) % rb->capacity;
+
+    if (rb->is_full) {
+        rb->tail = (rb->tail + 1) % rb->capacity;
     }
+
+    rb->is_full = (rb->head == rb->tail);
+
     return true;
 }
 
@@ -148,11 +132,11 @@ size_t rb_push_bytes(RingaBuf *rb, char* bytes, size_t count)
 {
     if (!rb) {
         fprintf(stderr,"%s():    rb was NULL.\n", __func__);
-        return false;
+        return 0;
     }
 
-    for (uint32_t i = 0; i < count; i++) {
-        if (! rb_push_byte(rb, &bytes[i])) {
+    for (size_t i = 0; i < count; i++) {
+        if (!rb_push_byte(rb, &bytes[i])) {
             return i;
         }
     }
@@ -166,15 +150,19 @@ bool rb_pop_byte(RingaBuf *rb, char* data)
         fprintf(stderr,"%s():    rb was NULL.\n", __func__);
         return false;
     }
-    if (rb->tail == rb->head) {
+    if (!data) {
+        fprintf(stderr,"%s():    data was NULL.\n", __func__);
+        return false;
+    }
+    if (rb->head == rb->tail && !rb->is_full) {
         fprintf(stderr,"%s():    Buffer is empty.\n", __func__);
         return false;
     }
+
     *data = rb->data[rb->tail];
-    rb->tail++;
-    if (rb->tail == rb->size) {
-        rb->tail = 0;
-    }
+    rb->tail = (rb->tail + 1) % rb->capacity;
+    rb->is_full = false;
+
     return true;
 }
 
@@ -182,15 +170,26 @@ size_t rb_pop_bytes(RingaBuf *rb, char* bytes, size_t count)
 {
     if (!rb) {
         fprintf(stderr,"%s():    rb was NULL.\n", __func__);
-        return false;
+        return 0;
     }
 
-    for (uint32_t i = 0; i < count; i++) {
-        if (! rb_pop_byte(rb, bytes +i)) {
+    for (size_t i = 0; i < count; i++) {
+        if (!rb_pop_byte(rb, bytes + i)) {
             return i;
         }
     }
 
     return count;
 }
+
+const char *string_ringabuf_version(void)
+{
+    return RINGABUF_API_VERSION_STRING;
+}
+
+int int_ringabuf_version(void)
+{
+    return RINGABUF_API_VERSION_INT;
+}
+
 #endif // RINGABUF_IMPLEMENTATION
