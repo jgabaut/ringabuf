@@ -63,6 +63,8 @@ RingaBuf rb_new_(RingaBuf rb, char* data, size_t size, int count);
 int32_t rb_get_head(RingaBuf rb);
 int32_t rb_get_tail(RingaBuf rb);
 size_t rb_get_capacity(RingaBuf rb);
+bool rb_isfull(RingaBuf rb);
+char* rb_get_data(RingaBuf rb);
 
 bool rb_push_byte(RingaBuf rb, char* data);
 size_t rb_push_bytes(RingaBuf rb, char* bytes, size_t count);
@@ -149,9 +151,27 @@ size_t rb_get_capacity(RingaBuf rb)
 {
     if (rb == NULL) {
         fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
-        return -1;
+        return 0;
     }
     return rb->capacity;
+}
+
+bool rb_isfull(RingaBuf rb)
+{
+    if (rb == NULL) {
+        fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        return false;
+    }
+    return rb->is_full;
+}
+
+char* rb_get_data(RingaBuf rb)
+{
+    if (rb == NULL) {
+        fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        return NULL;
+    }
+    return rb->data;
 }
 
 bool rb_push_byte(RingaBuf rb, char* data)
