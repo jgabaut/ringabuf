@@ -26,7 +26,7 @@
 
 #define RINGABUF_MAJOR 0 /**< Represents current major release.*/
 #define RINGABUF_MINOR 0 /**< Represents current minor release.*/
-#define RINGABUF_PATCH 1 /**< Represents current patch release.*/
+#define RINGABUF_PATCH 2 /**< Represents current patch release.*/
 
 /**
  * Defines current API version number from RINGABUF_MAJOR, RINGABUF_MINOR and RINGABUF_PATCH.
@@ -38,7 +38,7 @@ static const int RINGABUF_API_VERSION_INT =
 /**
  * Defines current API version string.
  */
-static const char RINGABUF_API_VERSION_STRING[] = "0.0.1"; /**< Represents current version with MAJOR.MINOR.PATCH format.*/
+static const char RINGABUF_API_VERSION_STRING[] = "0.0.2"; /**< Represents current version with MAJOR.MINOR.PATCH format.*/
 
 /**
  * Returns current ringabuf version as a string.
@@ -50,21 +50,24 @@ const char *string_ringabuf_version(void);
  */
 int int_ringabuf_version(void);
 
-typedef struct RingaBuf {
-    char* data;
-    uint32_t head;
-    uint32_t tail;
-    size_t capacity;
-    bool is_full;
-} RingaBuf;
+typedef struct RingaBuf_s *RingaBuf;
 
-RingaBuf rb_new_(char* data, size_t size, int count);
+size_t rb_structsize__(void);
+size_t rb_structalign__(void);
 
-#define rb_new_arr(data, type, count) rb_new_((data), sizeof(type), (count))
-#define rb_new(data, type) rb_new_((data), sizeof(type), 1)
+RingaBuf rb_new_(RingaBuf rb, char* data, size_t size, int count);
 
-bool rb_push_byte(RingaBuf *rb, char* data);
-size_t rb_push_bytes(RingaBuf *rb, char* bytes, size_t count);
+#define rb_new_arr(rb, data, type, count) rb_new_((rb), (data), sizeof(type), (count))
+#define rb_new(rb, data, type) rb_new_((rb), (data), sizeof(type), 1)
+
+int32_t rb_get_head(RingaBuf rb);
+int32_t rb_get_tail(RingaBuf rb);
+size_t rb_get_capacity(RingaBuf rb);
+bool rb_isfull(RingaBuf rb);
+char* rb_get_data(RingaBuf rb);
+
+bool rb_push_byte(RingaBuf rb, char* data);
+size_t rb_push_bytes(RingaBuf rb, char* bytes, size_t count);
 
 #define rb_push(rb, elem) rb_push_bytes((rb), (char*) &(elem), sizeof(elem))
 #define try_rb_push(rb, elem) do { \
@@ -75,8 +78,8 @@ size_t rb_push_bytes(RingaBuf *rb, char* bytes, size_t count);
     } \
 } while (0);
 
-bool rb_pop_byte(RingaBuf *rb, char* data);
-size_t rb_pop_bytes(RingaBuf *rb, char* bytes, size_t count);
+bool rb_pop_byte(RingaBuf rb, char* data);
+size_t rb_pop_bytes(RingaBuf rb, char* bytes, size_t count);
 #define rb_pop(rb, elem) rb_pop_bytes((rb), (char*) &(elem), sizeof(elem))
 #define try_rb_pop(rb, elem) do { \
     size_t rb_inner_size = rb_pop((rb), (elem)); \
@@ -90,22 +93,88 @@ size_t rb_pop_bytes(RingaBuf *rb, char* bytes, size_t count);
 
 #ifdef RINGABUF_IMPLEMENTATION
 
-RingaBuf rb_new_(char* data, size_t size, int count)
+struct RingaBuf_s {
+    char* data;
+    uint32_t head;
+    uint32_t tail;
+    size_t capacity;
+    bool is_full;
+};
+
+size_t rb_structsize__(void)
 {
-    if (count <= 0) {
-        fprintf(stderr,"%s():    invalid count -> {%i}.\n", __func__, count);
-        return (RingaBuf){0};
-    }
-    return (RingaBuf){
-        .data = data,
-        .head = 0,
-        .tail = 0,
-        .capacity = count * size,
-        .is_full = false
-    };
+    return sizeof(struct RingaBuf_s);
 }
 
-bool rb_push_byte(RingaBuf *rb, char* data)
+size_t rb_structalign__(void)
+{
+    return _Alignof(struct RingaBuf_s);
+}
+
+RingaBuf rb_new_(RingaBuf rb, char* data, size_t size, int count)
+{
+    if (rb == NULL) {
+        fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        return rb;
+    }
+    if (count <= 0) {
+        fprintf(stderr,"%s():    invalid count -> {%i}.\n", __func__, count);
+        return rb;
+    }
+    rb->data = data,
+    rb->head = 0,
+    rb->tail = 0,
+    rb->capacity = count * size,
+    rb->is_full = false;
+    return rb;
+}
+
+int32_t rb_get_head(RingaBuf rb)
+{
+    if (rb == NULL) {
+        fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        return -1;
+    }
+    return rb->head;
+}
+
+int32_t rb_get_tail(RingaBuf rb)
+{
+    if (rb == NULL) {
+        fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        return -1;
+    }
+    return rb->tail;
+}
+
+size_t rb_get_capacity(RingaBuf rb)
+{
+    if (rb == NULL) {
+        fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        return 0;
+    }
+    return rb->capacity;
+}
+
+bool rb_isfull(RingaBuf rb)
+{
+    if (rb == NULL) {
+        fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        return false;
+    }
+    return rb->is_full;
+}
+
+char* rb_get_data(RingaBuf rb)
+{
+    if (rb == NULL) {
+        fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        return NULL;
+    }
+    return rb->data;
+}
+
+bool rb_push_byte(RingaBuf rb, char* data)
 {
     if (!rb) {
         fprintf(stderr,"%s():    rb was NULL.\n", __func__);
@@ -128,7 +197,7 @@ bool rb_push_byte(RingaBuf *rb, char* data)
     return true;
 }
 
-size_t rb_push_bytes(RingaBuf *rb, char* bytes, size_t count)
+size_t rb_push_bytes(RingaBuf rb, char* bytes, size_t count)
 {
     if (!rb) {
         fprintf(stderr,"%s():    rb was NULL.\n", __func__);
@@ -144,7 +213,7 @@ size_t rb_push_bytes(RingaBuf *rb, char* bytes, size_t count)
     return count;
 }
 
-bool rb_pop_byte(RingaBuf *rb, char* data)
+bool rb_pop_byte(RingaBuf rb, char* data)
 {
     if (!rb) {
         fprintf(stderr,"%s():    rb was NULL.\n", __func__);
@@ -166,7 +235,7 @@ bool rb_pop_byte(RingaBuf *rb, char* data)
     return true;
 }
 
-size_t rb_pop_bytes(RingaBuf *rb, char* bytes, size_t count)
+size_t rb_pop_bytes(RingaBuf rb, char* bytes, size_t count)
 {
     if (!rb) {
         fprintf(stderr,"%s():    rb was NULL.\n", __func__);
