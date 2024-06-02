@@ -27,7 +27,7 @@
 
 #define RINGABUF_MAJOR 0 /**< Represents current major release.*/
 #define RINGABUF_MINOR 0 /**< Represents current minor release.*/
-#define RINGABUF_PATCH 2 /**< Represents current patch release.*/
+#define RINGABUF_PATCH 3 /**< Represents current patch release.*/
 
 /**
  * Defines current API version number from RINGABUF_MAJOR, RINGABUF_MINOR and RINGABUF_PATCH.
@@ -39,7 +39,7 @@ static const int RINGABUF_API_VERSION_INT =
 /**
  * Defines current API version string.
  */
-static const char RINGABUF_API_VERSION_STRING[] = "0.0.2"; /**< Represents current version with MAJOR.MINOR.PATCH format.*/
+static const char RINGABUF_API_VERSION_STRING[] = "0.0.3"; /**< Represents current version with MAJOR.MINOR.PATCH format.*/
 
 /**
  * Returns current ringabuf version as a string.
@@ -56,7 +56,7 @@ typedef struct RingaBuf_s *RingaBuf;
 size_t rb_structsize__(void);
 size_t rb_structalign__(void);
 
-RingaBuf rb_new_(RingaBuf rb, char* data, size_t size, int count);
+RingaBuf rb_new_(RingaBuf rb, char* data, size_t elem_size, int count);
 
 #define rb_new_arr(rb, data, type, count) rb_new_((rb), (data), sizeof(type), (count))
 #define rb_new(rb, data, type) rb_new_((rb), (data), sizeof(type), 1)
@@ -64,9 +64,11 @@ RingaBuf rb_new_(RingaBuf rb, char* data, size_t size, int count);
 int32_t rb_get_head(RingaBuf rb);
 int32_t rb_get_tail(RingaBuf rb);
 size_t rb_get_capacity(RingaBuf rb);
+size_t rb_get_elem_size(RingaBuf rb);
 bool rb_isfull(RingaBuf rb);
 char* rb_get_data(RingaBuf rb);
-char* rb_getelem_by_offset(RingaBuf rb, int32_t offset);
+char* rb_getelem_by_offset(RingaBuf rb, int32_t offset, bool* result);
+char* rb_getelem_by_index(RingaBuf rb, size_t index, bool* result);
 
 bool rb_push_byte(RingaBuf rb, char* data);
 size_t rb_push_bytes(RingaBuf rb, char* bytes, size_t count);
@@ -99,6 +101,7 @@ struct RingaBuf_s {
     char* data;
     uint32_t head;
     uint32_t tail;
+    size_t elem_size;
     size_t capacity;
     bool is_full;
 };
@@ -113,7 +116,7 @@ size_t rb_structalign__(void)
     return _Alignof(struct RingaBuf_s);
 }
 
-RingaBuf rb_new_(RingaBuf rb, char* data, size_t size, int count)
+RingaBuf rb_new_(RingaBuf rb, char* data, size_t elem_size, int count)
 {
     if (rb == NULL) {
         fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
@@ -123,10 +126,11 @@ RingaBuf rb_new_(RingaBuf rb, char* data, size_t size, int count)
         fprintf(stderr,"%s():    invalid count -> {%i}.\n", __func__, count);
         return rb;
     }
-    rb->data = data,
-    rb->head = 0,
-    rb->tail = 0,
-    rb->capacity = count * size,
+    rb->data = data;
+    rb->head = 0;
+    rb->tail = 0;
+    rb->elem_size = elem_size;
+    rb->capacity = count * elem_size;
     rb->is_full = false;
     return rb;
 }
@@ -158,6 +162,15 @@ size_t rb_get_capacity(RingaBuf rb)
     return rb->capacity;
 }
 
+size_t rb_get_elem_size(RingaBuf rb)
+{
+    if (rb == NULL) {
+        fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        return 0;
+    }
+    return rb->elem_size;
+}
+
 bool rb_isfull(RingaBuf rb)
 {
     if (rb == NULL) {
@@ -176,16 +189,30 @@ char* rb_get_data(RingaBuf rb)
     return rb->data;
 }
 
-char* rb_getelem_by_offset(RingaBuf rb, int32_t offset)
+char* rb_getelem_by_offset(RingaBuf rb, int32_t offset, bool* result)
 {
     if (rb == NULL) {
         fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        *result = false;
         return NULL;
     }
     if (offset < 0) {
         fprintf(stderr, "%s():    Passed offset is negative.\n", __func__);
+        *result = false;
         return NULL;
     }
+
+    size_t elem_size = rb_get_elem_size(rb);
+
+    if (offset % elem_size != 0) {
+#ifndef _WIN32
+        fprintf(stderr, "%s():    Access at unaligned offset for elem_size { %li }\n", __func__, elem_size);
+#else
+        fprintf(stderr, "%s():    Access at unaligned offset for elem_size { %lli }\n", __func__, elem_size);
+#endif // _WIN32
+        *result = false;
+    }
+
     size_t capacity = rb_get_capacity(rb);
     if (offset >= capacity) {
 #ifndef _WIN32
@@ -193,16 +220,70 @@ char* rb_getelem_by_offset(RingaBuf rb, int32_t offset)
 #else
         fprintf(stderr, "%s():    Passed offset { %" PRId32 " } is bigger than buffer capacity { %lli }\n", __func__, offset, capacity);
 #endif // _WIN32
+        *result = false;
         return NULL;
     }
     char* data = rb_get_data(rb);
 
     if (data == NULL) {
         fprintf(stderr, "%s():    Data was NULL.\n", __func__);
+        *result = false;
         return NULL;
     }
 
     return &(data[offset]);
+}
+
+char* rb_getelem_by_index(RingaBuf rb, size_t index, bool* result)
+{
+    if (rb == NULL) {
+        fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        *result = false;
+        return NULL;
+    }
+    if (index < 0) {
+        fprintf(stderr, "%s():    Passed index is negative.\n", __func__);
+        *result = false;
+        return NULL;
+    }
+
+    size_t elem_size = rb_get_elem_size(rb);
+    size_t capacity = rb_get_capacity(rb);
+
+    if (index > (capacity / elem_size)) {
+#ifndef _WIN32
+        fprintf(stderr, "%s():    Passed index { %li } is greater than capacity/elem_size { %li }\n", __func__, index, capacity / elem_size);
+#else
+        fprintf(stderr, "%s():    Passed index { %lli } is greater than capacity/elem_size { %lli }\n", __func__, index, capacity / elem_size);
+#endif // _WIN32
+        *result = false;
+        return NULL;
+    }
+
+
+    if (!rb_isfull(rb)) {
+        int32_t head = rb_get_head(rb);
+        size_t max_idx = (head / elem_size) -1;
+        if (index > max_idx) {
+#ifndef _WIN32
+            fprintf(stderr, "%s():    Passed index { %li } is greater than max_idx { %li }\n", __func__, index, max_idx);
+#else
+            fprintf(stderr, "%s():    Passed index { %lli } is greater than max_idx { %lli }\n", __func__, index, max_idx);
+#endif // _WIN32
+            *result = false;
+            return NULL;
+        }
+    }
+
+    char* data = rb_get_data(rb);
+
+    if (data == NULL) {
+        fprintf(stderr, "%s():    Data was NULL.\n", __func__);
+        *result = false;
+        return NULL;
+    }
+
+    return &(data[elem_size * index]);
 }
 
 bool rb_push_byte(RingaBuf rb, char* data)
@@ -233,6 +314,15 @@ size_t rb_push_bytes(RingaBuf rb, char* bytes, size_t count)
     if (!rb) {
         fprintf(stderr,"%s():    rb was NULL.\n", __func__);
         return 0;
+    }
+
+    size_t elem_size = rb_get_elem_size(rb);
+    if (count != elem_size) {
+#ifndef _WIN32
+        fprintf(stderr,"%s():    Pushing a number of bytes { %li } different than elem_size { %li }\n", __func__,  count, elem_size);
+#else
+        fprintf(stderr,"%s():    Pushing a number of bytes { %lli } different than elem_size { %lli }\n", __func__, count, elem_size);
+#endif // _WIN32
     }
 
     for (size_t i = 0; i < count; i++) {
@@ -271,6 +361,15 @@ size_t rb_pop_bytes(RingaBuf rb, char* bytes, size_t count)
     if (!rb) {
         fprintf(stderr,"%s():    rb was NULL.\n", __func__);
         return 0;
+    }
+
+    size_t elem_size = rb_get_elem_size(rb);
+    if (count != elem_size) {
+#ifndef _WIN32
+        fprintf(stderr,"%s():    Popping a number of bytes { %li } different than elem_size { %li }\n", __func__,  count, elem_size);
+#else
+        fprintf(stderr,"%s():    Popping a number of bytes { %lli } different than elem_size { %lli }\n", __func__, count, elem_size);
+#endif // _WIN32
     }
 
     for (size_t i = 0; i < count; i++) {
