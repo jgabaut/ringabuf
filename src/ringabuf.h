@@ -52,7 +52,7 @@ int int_ringabuf_version(void);
 
 typedef struct RingaBuf_s *RingaBuf;
 
-size_t rb_structsize(void);
+size_t rb_structsize__(void);
 size_t rb_structalign__(void);
 
 RingaBuf rb_new_(RingaBuf rb, char* data, size_t size, int count);
