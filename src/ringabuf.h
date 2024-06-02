@@ -27,7 +27,7 @@
 
 #define RINGABUF_MAJOR 0 /**< Represents current major release.*/
 #define RINGABUF_MINOR 0 /**< Represents current minor release.*/
-#define RINGABUF_PATCH 3 /**< Represents current patch release.*/
+#define RINGABUF_PATCH 4 /**< Represents current patch release.*/
 
 /**
  * Defines current API version number from RINGABUF_MAJOR, RINGABUF_MINOR and RINGABUF_PATCH.
@@ -39,7 +39,7 @@ static const int RINGABUF_API_VERSION_INT =
 /**
  * Defines current API version string.
  */
-static const char RINGABUF_API_VERSION_STRING[] = "0.0.3"; /**< Represents current version with MAJOR.MINOR.PATCH format.*/
+static const char RINGABUF_API_VERSION_STRING[] = "0.0.4"; /**< Represents current version with MAJOR.MINOR.PATCH format.*/
 
 /**
  * Returns current ringabuf version as a string.
