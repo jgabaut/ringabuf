@@ -68,6 +68,7 @@ size_t rb_get_elem_size(RingaBuf rb);
 bool rb_isfull(RingaBuf rb);
 char* rb_get_data(RingaBuf rb);
 char* rb_getelem_by_offset(RingaBuf rb, int32_t offset);
+char* rb_getelem_by_index(RingaBuf rb, size_t index);
 
 bool rb_push_byte(RingaBuf rb, char* data);
 size_t rb_push_bytes(RingaBuf rb, char* bytes, size_t count);
@@ -226,6 +227,52 @@ char* rb_getelem_by_offset(RingaBuf rb, int32_t offset)
     }
 
     return &(data[offset]);
+}
+
+char* rb_getelem_by_index(RingaBuf rb, size_t index)
+{
+    if (rb == NULL) {
+        fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        return NULL;
+    }
+    if (index < 0) {
+        fprintf(stderr, "%s():    Passed index is negative.\n", __func__);
+        return NULL;
+    }
+
+    size_t elem_size = rb_get_elem_size(rb);
+    size_t capacity = rb_get_capacity(rb);
+
+    if (index > (capacity / elem_size)) {
+#ifndef _WIN32
+        fprintf(stderr, "%s():    Passed index { %li } is greater than capacity/elem_size { %li }\n", __func__, index, capacity / elem_size);
+#else
+        fprintf(stderr, "%s():    Passed index { %lli } is greater than capacity/elem_size { %lli }\n", __func__, index, capacity / elem_size);
+#endif // _WIN32
+        return NULL;
+    }
+
+
+    if (!rb_isfull(rb)) {
+        int32_t head = rb_get_head(rb);
+        size_t max_idx = (head / elem_size) -1;
+        if (index > max_idx) {
+#ifndef _WIN32
+            fprintf(stderr, "%s():    Passed index { %li } is greater than max_idx { %li }\n", __func__, index, max_idx);
+#else
+            fprintf(stderr, "%s():    Passed index { %lli } is greater than max_idx { %lli }\n", __func__, index, max_idx);
+#endif // _WIN32
+        }
+    }
+
+    char* data = rb_get_data(rb);
+
+    if (data == NULL) {
+        fprintf(stderr, "%s():    Data was NULL.\n", __func__);
+        return NULL;
+    }
+
+    return &(data[elem_size * index]);
 }
 
 bool rb_push_byte(RingaBuf rb, char* data)
