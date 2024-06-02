@@ -187,7 +187,7 @@ char* rb_getelem_by_offset(RingaBuf rb, int32_t offset)
         return NULL;
     }
     size_t capacity = rb_get_capacity(rb);
-    if (offset > capacity) {
+    if (offset >= capacity) {
 #ifndef _WIN32
         fprintf(stderr, "%s():    Passed offset { %" PRId32 " } is bigger than buffer capacity { %li }\n", __func__, offset, capacity);
 #else
