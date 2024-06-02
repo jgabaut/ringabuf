@@ -67,8 +67,8 @@ size_t rb_get_capacity(RingaBuf rb);
 size_t rb_get_elem_size(RingaBuf rb);
 bool rb_isfull(RingaBuf rb);
 char* rb_get_data(RingaBuf rb);
-char* rb_getelem_by_offset(RingaBuf rb, int32_t offset);
-char* rb_getelem_by_index(RingaBuf rb, size_t index);
+char* rb_getelem_by_offset(RingaBuf rb, int32_t offset, bool* result);
+char* rb_getelem_by_index(RingaBuf rb, size_t index, bool* result);
 
 bool rb_push_byte(RingaBuf rb, char* data);
 size_t rb_push_bytes(RingaBuf rb, char* bytes, size_t count);
@@ -189,14 +189,16 @@ char* rb_get_data(RingaBuf rb)
     return rb->data;
 }
 
-char* rb_getelem_by_offset(RingaBuf rb, int32_t offset)
+char* rb_getelem_by_offset(RingaBuf rb, int32_t offset, bool* result)
 {
     if (rb == NULL) {
         fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        *result = false;
         return NULL;
     }
     if (offset < 0) {
         fprintf(stderr, "%s():    Passed offset is negative.\n", __func__);
+        *result = false;
         return NULL;
     }
 
@@ -208,6 +210,7 @@ char* rb_getelem_by_offset(RingaBuf rb, int32_t offset)
 #else
         fprintf(stderr, "%s():    Access at unaligned offset for elem_size { %lli }\n", __func__, elem_size);
 #endif // _WIN32
+        *result = false;
     }
 
     size_t capacity = rb_get_capacity(rb);
@@ -217,26 +220,30 @@ char* rb_getelem_by_offset(RingaBuf rb, int32_t offset)
 #else
         fprintf(stderr, "%s():    Passed offset { %" PRId32 " } is bigger than buffer capacity { %lli }\n", __func__, offset, capacity);
 #endif // _WIN32
+        *result = false;
         return NULL;
     }
     char* data = rb_get_data(rb);
 
     if (data == NULL) {
         fprintf(stderr, "%s():    Data was NULL.\n", __func__);
+        *result = false;
         return NULL;
     }
 
     return &(data[offset]);
 }
 
-char* rb_getelem_by_index(RingaBuf rb, size_t index)
+char* rb_getelem_by_index(RingaBuf rb, size_t index, bool* result)
 {
     if (rb == NULL) {
         fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        *result = false;
         return NULL;
     }
     if (index < 0) {
         fprintf(stderr, "%s():    Passed index is negative.\n", __func__);
+        *result = false;
         return NULL;
     }
 
@@ -249,6 +256,7 @@ char* rb_getelem_by_index(RingaBuf rb, size_t index)
 #else
         fprintf(stderr, "%s():    Passed index { %lli } is greater than capacity/elem_size { %lli }\n", __func__, index, capacity / elem_size);
 #endif // _WIN32
+        *result = false;
         return NULL;
     }
 
@@ -262,6 +270,8 @@ char* rb_getelem_by_index(RingaBuf rb, size_t index)
 #else
             fprintf(stderr, "%s():    Passed index { %lli } is greater than max_idx { %lli }\n", __func__, index, max_idx);
 #endif // _WIN32
+            *result = false;
+            return NULL;
         }
     }
 
@@ -269,6 +279,7 @@ char* rb_getelem_by_index(RingaBuf rb, size_t index)
 
     if (data == NULL) {
         fprintf(stderr, "%s():    Data was NULL.\n", __func__);
+        *result = false;
         return NULL;
     }
 
