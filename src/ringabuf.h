@@ -23,6 +23,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
 #define RINGABUF_MAJOR 0 /**< Represents current major release.*/
 #define RINGABUF_MINOR 0 /**< Represents current minor release.*/
@@ -65,6 +66,7 @@ int32_t rb_get_tail(RingaBuf rb);
 size_t rb_get_capacity(RingaBuf rb);
 bool rb_isfull(RingaBuf rb);
 char* rb_get_data(RingaBuf rb);
+char* rb_getelem_by_offset(RingaBuf rb, int32_t offset);
 
 bool rb_push_byte(RingaBuf rb, char* data);
 size_t rb_push_bytes(RingaBuf rb, char* bytes, size_t count);
@@ -172,6 +174,35 @@ char* rb_get_data(RingaBuf rb)
         return NULL;
     }
     return rb->data;
+}
+
+char* rb_getelem_by_offset(RingaBuf rb, int32_t offset)
+{
+    if (rb == NULL) {
+        fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        return NULL;
+    }
+    if (offset < 0) {
+        fprintf(stderr, "%s():    Passed offset is negative.\n", __func__);
+        return NULL;
+    }
+    size_t capacity = rb_get_capacity(rb);
+    if (offset > capacity) {
+#ifndef _WIN32
+        fprintf(stderr, "%s():    Passed offset { %" PRId32 " } is bigger than buffer capacity { %li }\n", __func__, offset, capacity);
+#else
+        fprintf(stderr, "%s():    Passed offset { %" PRId32 " } is bigger than buffer capacity { %lli }\n", __func__, offset, capacity);
+#endif // _WIN32
+        return NULL;
+    }
+    char* data = rb_get_data(rb);
+
+    if (data == NULL) {
+        fprintf(stderr, "%s():    Data was NULL.\n", __func__);
+        return NULL;
+    }
+
+    return &(data[offset]);
 }
 
 bool rb_push_byte(RingaBuf rb, char* data)
