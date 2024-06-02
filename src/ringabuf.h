@@ -70,7 +70,9 @@ char* rb_get_data(RingaBuf rb);
 char* rb_getelem_by_offset(RingaBuf rb, int32_t offset, bool* result);
 char* rb_getelem_by_index(RingaBuf rb, size_t index, bool* result);
 size_t rb_get_newest_idx(RingaBuf rb, bool* result);
+size_t rb_get_oldest_idx(RingaBuf rb, bool* result);
 char* rb_getelem_newest(RingaBuf rb, bool* result);
+char* rb_getelem_oldest(RingaBuf rb, bool* result);
 
 bool rb_push_byte(RingaBuf rb, char* data);
 size_t rb_push_bytes(RingaBuf rb, char* bytes, size_t count);
@@ -344,6 +346,42 @@ size_t rb_get_newest_idx(RingaBuf rb, bool* result)
     return newest_idx;
 }
 
+size_t rb_get_oldest_idx(RingaBuf rb, bool* result)
+{
+    if (!rb) {
+        fprintf(stderr,"%s():    rb was NULL.\n", __func__);
+        *result = false;
+        return -1;
+    }
+
+    int32_t head = rb_get_head(rb);
+    size_t elem_size = rb_get_elem_size(rb);
+    if (elem_size < 1) {
+#ifndef _WIN32
+        fprintf(stderr, "%s():    Invalid elem_size: { %li }\n", __func__, elem_size);
+#else
+        fprintf(stderr, "%s():    Invalid elem_size: { %lli }\n", __func__, elem_size);
+#endif // _WIN32
+        *result = false;
+        return -1;
+    }
+
+    size_t oldest_idx = -1;
+
+    if (rb_isfull(rb)) {
+        oldest_idx = (head == 0 ? 0 : head/elem_size);
+    } else {
+        if (head == 0) {
+            fprintf(stderr, "%s():    ring is empty.\n", __func__);
+            *result = false;
+            return -1;
+        }
+        oldest_idx = 0;
+    }
+
+    return oldest_idx;
+}
+
 char* rb_getelem_newest(RingaBuf rb, bool* result)
 {
     bool idx_res = true;
@@ -360,6 +398,29 @@ char* rb_getelem_newest(RingaBuf rb, bool* result)
             fprintf(stderr, "%s():    rb_get_newest_idx() did not fail, but index was negative. {%li}\n", __func__, newest_idx);
 #else
             fprintf(stderr, "%s():    rb_get_newest_idx() did not fail, but index was negative. {%lli}\n", __func__, newest_idx);
+#endif // _WIN32
+            *result = false;
+            return NULL;
+        }
+    }
+}
+
+char* rb_getelem_oldest(RingaBuf rb, bool* result)
+{
+    bool idx_res = true;
+    size_t oldest_idx = rb_get_oldest_idx(rb, &idx_res);
+    if (oldest_idx >= 0 && idx_res) {
+        return rb_getelem_by_index(rb, oldest_idx, result);
+    } else {
+        if (!idx_res) {
+            fprintf(stderr, "%s():    Failed rb_get_oldest_idx().\n", __func__);
+            *result = false;
+            return NULL;
+        } else {
+#ifndef _WIN32
+            fprintf(stderr, "%s():    rb_get_oldest_idx() did not fail, but index was negative. {%li}\n", __func__, oldest_idx);
+#else
+            fprintf(stderr, "%s():    rb_get_oldest_idx() did not fail, but index was negative. {%lli}\n", __func__, oldest_idx);
 #endif // _WIN32
             *result = false;
             return NULL;
