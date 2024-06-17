@@ -39,7 +39,7 @@ static const int RINGABUF_API_VERSION_INT =
 /**
  * Defines current API version string.
  */
-static const char RINGABUF_API_VERSION_STRING[] = "0.0.4"; /**< Represents current version with MAJOR.MINOR.PATCH format.*/
+static const char RINGABUF_API_VERSION_STRING[] = "0.0.5-dev"; /**< Represents current version with MAJOR.MINOR.PATCH format.*/
 
 /**
  * Returns current ringabuf version as a string.
@@ -65,6 +65,7 @@ int32_t rb_get_head(RingaBuf rb);
 int32_t rb_get_tail(RingaBuf rb);
 size_t rb_get_capacity(RingaBuf rb);
 size_t rb_get_elem_size(RingaBuf rb);
+bool rb_is_array(RingaBuf rb);
 bool rb_isfull(RingaBuf rb);
 char* rb_get_data(RingaBuf rb);
 char* rb_getelem_by_offset(RingaBuf rb, int32_t offset, bool* result);
@@ -106,6 +107,7 @@ struct RingaBuf_s {
     uint32_t head;
     uint32_t tail;
     size_t elem_size;
+    bool array_like; /**< Denotes wether the buffer is filled only with elements of size elem_size.*/
     size_t capacity;
     bool is_full;
 };
@@ -134,6 +136,9 @@ RingaBuf rb_new_(RingaBuf rb, char* data, size_t elem_size, int count)
     rb->head = 0;
     rb->tail = 0;
     rb->elem_size = elem_size;
+    rb->array_like = true; // By default, we expect array-like usage.
+                           // This will be set to false bt rb_push_bytes() and rb_pop_bytes()
+                           //  when they are called with a different size than elem_size.
     rb->capacity = count * elem_size;
     rb->is_full = false;
     return rb;
@@ -184,6 +189,15 @@ bool rb_isfull(RingaBuf rb)
     return rb->is_full;
 }
 
+bool rb_is_array(RingaBuf rb)
+{
+    if (rb == NULL) {
+        fprintf(stderr, "%s():    Passed RingaBuf was NULL.\n", __func__);
+        return false;
+    }
+    return rb->array_like;
+}
+
 char* rb_get_data(RingaBuf rb)
 {
     if (rb == NULL) {
@@ -217,13 +231,16 @@ char* rb_getelem_by_offset(RingaBuf rb, int32_t offset, bool* result)
         return NULL;
     }
 
-    if (offset % elem_size != 0) {
+    if (rb_is_array(rb)) {
+        if (offset % elem_size != 0) {
 #ifndef _WIN32
-        fprintf(stderr, "%s():    Access at unaligned offset for elem_size { %li }\n", __func__, elem_size);
+            fprintf(stderr, "%s():    Access at unaligned offset for elem_size { %li }\n", __func__, elem_size);
 #else
-        fprintf(stderr, "%s():    Access at unaligned offset for elem_size { %lli }\n", __func__, elem_size);
+            fprintf(stderr, "%s():    Access at unaligned offset for elem_size { %lli }\n", __func__, elem_size);
 #endif // _WIN32
-        *result = false;
+            *result = false;
+            return NULL;
+        }
     }
 
     size_t capacity = rb_get_capacity(rb);
@@ -256,6 +273,11 @@ char* rb_getelem_by_index(RingaBuf rb, size_t index, bool* result)
     }
     if (index < 0) {
         fprintf(stderr, "%s():    Passed index is negative.\n", __func__);
+        *result = false;
+        return NULL;
+    }
+    if (!rb_is_array(rb)) {
+        fprintf(stderr, "%s():    Passed RingaBuf is not array-like.\n", __func__);
         *result = false;
         return NULL;
     }
@@ -316,6 +338,12 @@ size_t rb_get_newest_idx(RingaBuf rb, bool* result)
         return -1;
     }
 
+    if (!rb_is_array(rb)) {
+        fprintf(stderr, "%s():    Passed RingaBuf is not array-like.\n", __func__);
+        *result = false;
+        return -1;
+    }
+
     int32_t head = rb_get_head(rb);
     size_t elem_size = rb_get_elem_size(rb);
     size_t capacity = rb_get_capacity(rb);
@@ -354,6 +382,12 @@ size_t rb_get_oldest_idx(RingaBuf rb, bool* result)
         return -1;
     }
 
+    if (!rb_is_array(rb)) {
+        fprintf(stderr, "%s():    Passed RingaBuf is not array-like.\n", __func__);
+        *result = false;
+        return -1;
+    }
+
     int32_t head = rb_get_head(rb);
     size_t elem_size = rb_get_elem_size(rb);
     if (elem_size < 1) {
@@ -384,6 +418,11 @@ size_t rb_get_oldest_idx(RingaBuf rb, bool* result)
 
 char* rb_getelem_newest(RingaBuf rb, bool* result)
 {
+    if (!rb_is_array(rb)) {
+        fprintf(stderr, "%s():    Passed RingaBuf is not array-like.\n", __func__);
+        *result = false;
+        return NULL;
+    }
     bool idx_res = true;
     size_t newest_idx = rb_get_newest_idx(rb, &idx_res);
     if (newest_idx >= 0 && idx_res) {
@@ -407,6 +446,11 @@ char* rb_getelem_newest(RingaBuf rb, bool* result)
 
 char* rb_getelem_oldest(RingaBuf rb, bool* result)
 {
+    if (!rb_is_array(rb)) {
+        fprintf(stderr, "%s():    Passed RingaBuf is not array-like.\n", __func__);
+        *result = false;
+        return NULL;
+    }
     bool idx_res = true;
     size_t oldest_idx = rb_get_oldest_idx(rb, &idx_res);
     if (oldest_idx >= 0 && idx_res) {
@@ -458,13 +502,17 @@ size_t rb_push_bytes(RingaBuf rb, char* bytes, size_t count)
         return 0;
     }
 
-    size_t elem_size = rb_get_elem_size(rb);
-    if (count != elem_size) {
+    if (rb_is_array(rb)) {
+        size_t elem_size = rb_get_elem_size(rb);
+        if (count != elem_size) {
 #ifndef _WIN32
-        fprintf(stderr,"%s():    Pushing a number of bytes { %li } different than elem_size { %li }\n", __func__,  count, elem_size);
+            fprintf(stderr,"%s():    Pushing a number of bytes { %li } different than elem_size { %li }\n", __func__,  count, elem_size);
 #else
-        fprintf(stderr,"%s():    Pushing a number of bytes { %lli } different than elem_size { %lli }\n", __func__, count, elem_size);
+            fprintf(stderr,"%s():    Pushing a number of bytes { %lli } different than elem_size { %lli }\n", __func__, count, elem_size);
 #endif // _WIN32
+            fprintf(stderr,"%s():    Setting rb->array_like to false.\n", __func__);
+            rb->array_like = false;
+        }
     }
 
     for (size_t i = 0; i < count; i++) {
@@ -505,13 +553,17 @@ size_t rb_pop_bytes(RingaBuf rb, char* bytes, size_t count)
         return 0;
     }
 
-    size_t elem_size = rb_get_elem_size(rb);
-    if (count != elem_size) {
+    if (rb_is_array(rb)) {
+        size_t elem_size = rb_get_elem_size(rb);
+        if (count != elem_size) {
 #ifndef _WIN32
-        fprintf(stderr,"%s():    Popping a number of bytes { %li } different than elem_size { %li }\n", __func__,  count, elem_size);
+            fprintf(stderr,"%s():    Popping a number of bytes { %li } different than elem_size { %li }\n", __func__,  count, elem_size);
 #else
-        fprintf(stderr,"%s():    Popping a number of bytes { %lli } different than elem_size { %lli }\n", __func__, count, elem_size);
+            fprintf(stderr,"%s():    Popping a number of bytes { %lli } different than elem_size { %lli }\n", __func__, count, elem_size);
 #endif // _WIN32
+            fprintf(stderr,"%s():    Setting rb->array_like to false.\n", __func__);
+            rb->array_like = false;
+        }
     }
 
     for (size_t i = 0; i < count; i++) {
